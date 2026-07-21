@@ -54,13 +54,15 @@
 |--------|------|
 | `SCT_KEY` | ServerChan SendKey（https://sct.ftqq.com/ ） |
 
-### 可选 Variables
+### 续期阈值
 
-| Variable | 默认 | 说明 |
-|----------|------|------|
-| `RENEW_THRESHOLD_DAYS` | `180` | 剩余天数 **小于** 该值才续期 |
+在 `renew_domains.py` 顶部改数字即可：
 
-路径：**Settings → Secrets and variables → Actions → Variables**
+```python
+RENEW_THRESHOLD_DAYS = 180  # 剩余天数小于该值才续期
+```
+
+无需在 GitHub Variables 里配置。
 
 ## 行为说明
 
@@ -74,12 +76,11 @@
 ```bash
 export DNSHE_ACCOUNTS='[{"name":"测试","api_key":"...","api_secret":"..."}]'
 export SCT_KEY='你的SendKey'   # 可选
-export RENEW_THRESHOLD_DAYS=180
 pip install requests
 python renew_domains.py
 ```
 
 ## 定时
 
-默认 UTC 每月 1 日 00:00（北京时间约 08:00）。  
+默认 UTC 每月 **15** 日 00:00（北京时间约 08:00，避开月初扎堆）。  
 改 `.github/workflows/renew.yml` 里 `cron`，或用 Actions 页 **Run workflow** 手动跑。

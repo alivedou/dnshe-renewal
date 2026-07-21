@@ -6,8 +6,8 @@ import requests
 
 BASE_URL = "https://api005.dnshe.com/index.php?m=domain_hub"
 
-# 续期阈值：到期时间小于该天数则执行续期
-RENEW_THRESHOLD_DAYS = int(os.environ.get("RENEW_THRESHOLD_DAYS", "180"))
+# 续期阈值：剩余天数小于该值才续期（改数字即可，不走 Actions 变量）
+RENEW_THRESHOLD_DAYS = 180
 
 
 def send_notification(content, title="DNSHE 域名自动续期报告"):

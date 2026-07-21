@@ -2,7 +2,7 @@ name: DNSHE Domain Auto Renew
 
 on:
   schedule:
-    # UTC 每月 15 日 00:00 ≈ 北京时间 08:00
+    # UTC 每月 15 日 00:00 ≈ 北京时间 08:00（避开月初扎堆）
     - cron: '0 0 15 * *'
   workflow_dispatch:
 
@@ -31,6 +31,4 @@ jobs:
           DNSHE_ACCOUNT_NAME: ${{ secrets.DNSHE_ACCOUNT_NAME }}
           # 通知
           SCT_KEY: ${{ secrets.SCT_KEY }}
-          # 可选：续期阈值天数，默认 180
-          RENEW_THRESHOLD_DAYS: ${{ vars.RENEW_THRESHOLD_DAYS }}
         run: python renew_domains.py
