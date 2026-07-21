@@ -99,7 +99,12 @@ def load_accounts():
 
 
 def process_account(account):
-    """处理单个账号：列域名 → 按阈值续期 → 返回报告文本与是否有失败"""
+    """
+    处理单个账号：列域名 → 按阈值续期。
+    返回 (detail_log, summary_line, has_error)
+    - detail_log: 完整日志（打到控制台 / Actions）
+    - summary_line: 精简汇总（发 Telegram）
+    """
     name = account["name"]
     headers = {
         "X-API-Key": account["api_key"],
@@ -109,6 +114,11 @@ def process_account(account):
 
     lines = [f"## 账号: {name}", ""]
     has_error = False
+    total = 0
+    skipped = 0
+    success = 0
+    failed = 0
+    failed_domains = []  # [(domain, reason), ...]
 
     list_url = (
         f"{BASE_URL}&endpoint=subdomains&action=list"
@@ -121,15 +131,19 @@ def process_account(account):
         if resp.status_code >= 400:
             has_error = True
             lines.append(f"❌ 获取域名列表 HTTP {resp.status_code}: {body}")
-            return "\n".join(lines), has_error
+            summary = f"【{name}】获取域名列表失败 (HTTP {resp.status_code})"
+            return "\n".join(lines), summary, has_error
     except Exception as e:
         has_error = True
         lines.append(f"❌ 获取域名列表失败: {e}")
-        return "\n".join(lines), has_error
+        summary = f"【{name}】获取域名列表失败: {e}"
+        return "\n".join(lines), summary, has_error
 
+    total = len(subdomains)
     if not subdomains:
         lines.append("（该账号下无子域名）")
-        return "\n".join(lines), has_error
+        summary = f"【{name}】共 0 个域名"
+        return "\n".join(lines), summary, has_error
 
     today = datetime.now()
     renewal_results = []
@@ -142,6 +156,7 @@ def process_account(account):
         never_expires = domain.get("never_expires", 0)
 
         if never_expires:
+            skipped += 1
             expiry_info.append(f"{full_domain}: 到期时间 永久有效")
             renewal_results.append(f"⏭️ {full_domain}: 已设置为永不过期，跳过续期")
             continue
@@ -163,6 +178,7 @@ def process_account(account):
             expiry_info.append(f"{full_domain}: 到期时间 未知")
 
         if days_remaining is not None and days_remaining >= RENEW_THRESHOLD_DAYS:
+            skipped += 1
             renewal_results.append(
                 f"⏭️ {full_domain}: 剩余 {days_remaining}天 >= {RENEW_THRESHOLD_DAYS}天，跳过续期"
             )
@@ -176,17 +192,22 @@ def process_account(account):
                 renew_url, headers=headers, json=payload, timeout=30
             ).json()
             if r_resp.get("success"):
+                success += 1
                 new_expiry = r_resp.get("new_expires_at", "未知")
                 charged = r_resp.get("charged_amount", 0)
                 renewal_results.append(
                     f"✅ {full_domain}: 续期成功 (新到期: {new_expiry}, 消耗: {charged}积分)"
                 )
             else:
+                failed += 1
                 has_error = True
                 msg = r_resp.get("message", "未知错误")
+                failed_domains.append((full_domain, msg))
                 renewal_results.append(f"❌ {full_domain}: 续期失败 ({msg})")
         except Exception as e:
+            failed += 1
             has_error = True
+            failed_domains.append((full_domain, str(e)))
             renewal_results.append(f"❌ {full_domain}: 请求异常 ({e})")
 
     lines.append("=== 本次续期结果 ===")
@@ -201,7 +222,17 @@ def process_account(account):
     lines.append("=== 所有域名到期时间 ===")
     lines.extend(expiry_info)
 
-    return "\n".join(lines), has_error
+    # 精简汇总：只给 Telegram；失败时附域名列表
+    summary = (
+        f"【{name}】共 {total} 个域名"
+        f"，无需续期 {skipped}"
+        f"，续期成功 {success}"
+        f"，续期失败 {failed}"
+    )
+    if failed_domains:
+        fail_lines = [f"  · {d} ({reason})" for d, reason in failed_domains]
+        summary += "\n失败域名:\n" + "\n".join(fail_lines)
+    return "\n".join(lines), summary, has_error
 
 
 def main():
@@ -209,21 +240,21 @@ def main():
     print(f"共 {len(accounts)} 个账号，将顺序执行")
     print(f"续期阈值: 剩余 < {RENEW_THRESHOLD_DAYS} 天")
 
-    all_parts = []
+    summaries = []
     any_error = False
 
     for i, account in enumerate(accounts, 1):
         print(f"\n-------- [{i}/{len(accounts)}] {account['name']} --------")
-        report, err = process_account(account)
-        print(report)
-        all_parts.append(report)
+        detail, summary, err = process_account(account)
+        print(detail)
+        print(f"[汇总] {summary}")
+        summaries.append(summary)
         if err:
             any_error = True
 
-    full_message = "\n\n---\n\n".join(all_parts)
     status = "有失败" if any_error else "完成"
-    title = f"DNSHE 多账号续期报告 ({len(accounts)}号) · {status}"
-    send_notification(full_message, title=title)
+    title = f"DNSHE 续期报告 ({len(accounts)}号) · {status}"
+    send_notification("\n".join(summaries), title=title)
 
     if any_error:
         raise SystemExit(1)
