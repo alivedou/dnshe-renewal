@@ -1,0 +1,36 @@
+name: DNSHE Domain Auto Renew
+
+on:
+  schedule:
+    # UTC 每月 1 日 00:00 ≈ 北京时间 08:00
+    - cron: '0 0 1 * *'
+  workflow_dispatch:
+
+jobs:
+  renew:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: pip install requests
+
+      - name: Run renew script (multi-account sequential)
+        env:
+          # 多账号（推荐）：JSON 数组，见 README
+          DNSHE_ACCOUNTS: ${{ secrets.DNSHE_ACCOUNTS }}
+          # 单账号兼容（未设 DNSHE_ACCOUNTS 时生效）
+          DNSHE_API_KEY: ${{ secrets.DNSHE_API_KEY }}
+          DNSHE_API_SECRET: ${{ secrets.DNSHE_API_SECRET }}
+          DNSHE_ACCOUNT_NAME: ${{ secrets.DNSHE_ACCOUNT_NAME }}
+          # 通知
+          SCT_KEY: ${{ secrets.SCT_KEY }}
+          # 可选：续期阈值天数，默认 180
+          RENEW_THRESHOLD_DAYS: ${{ vars.RENEW_THRESHOLD_DAYS }}
+        run: python renew_domains.py
