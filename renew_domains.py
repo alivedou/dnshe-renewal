@@ -253,7 +253,8 @@ def main():
             any_error = True
 
     status = "有失败" if any_error else "完成"
-    title = f"DNSHE 续期报告 ({len(accounts)}号) · {status}"
+    run_time = datetime.now().strftime("%Y-%m-%d %H:%M")
+    title = f"DNSHE 续期报告 ({run_time}) · {status}"
     send_notification("\n".join(summaries), title=title)
 
     if any_error:
