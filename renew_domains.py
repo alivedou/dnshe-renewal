@@ -11,23 +11,43 @@ RENEW_THRESHOLD_DAYS = 180
 
 
 def send_notification(content, title="DNSHE 域名自动续期报告"):
-    """使用 ServerChan (sct.ftqq.com) 发送通知"""
-    sct_key = os.environ.get("SCT_KEY")
-    if not sct_key:
-        print("未配置 SCT_KEY，跳过推送")
+    """使用 Telegram Bot 发送通知"""
+    token = (os.environ.get("TELEGRAM_BOT_TOKEN") or "").strip()
+    chat_id = (os.environ.get("TELEGRAM_CHAT_ID") or "").strip()
+    if not token or not chat_id:
+        print("未配置 TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_ID，跳过推送")
         return
 
-    url = f"https://sct.ftqq.com/{sct_key}.send"
-    data = {
-        "title": title,
-        "desp": content.replace("\n", "\n\n"),
-        "short": title[:64],
-    }
-    try:
-        resp = requests.post(url, data=data, timeout=10)
-        print("ServerChan 推送结果:", resp.text)
-    except Exception as e:
-        print("推送失败:", str(e))
+    text = f"{title}\n\n{content}"
+    # Telegram 单条上限 4096，超长拆多条
+    max_len = 4000
+    chunks = []
+    while text:
+        if len(text) <= max_len:
+            chunks.append(text)
+            break
+        cut = text.rfind("\n", 0, max_len)
+        if cut < max_len // 2:
+            cut = max_len
+        chunks.append(text[:cut])
+        text = text[cut:].lstrip("\n")
+
+    url = f"https://api.telegram.org/bot{token}/sendMessage"
+    for i, chunk in enumerate(chunks, 1):
+        if len(chunks) > 1:
+            chunk = f"({i}/{len(chunks)})\n{chunk}"
+        data = {
+            "chat_id": chat_id,
+            "text": chunk,
+            "disable_web_page_preview": True,
+        }
+        try:
+            resp = requests.post(url, json=data, timeout=15)
+            print(f"Telegram 推送 [{i}/{len(chunks)}]:", resp.text)
+            if resp.status_code >= 400:
+                print("Telegram 推送失败 HTTP", resp.status_code)
+        except Exception as e:
+            print("推送失败:", str(e))
 
 
 def load_accounts():

@@ -1,4 +1,4 @@
-# DNSHE Auto Renew (ServerChan Edition)
+# DNSHE Auto Renew (Telegram Edition)
 
 自动续期 DNSHE 免费域名，基于 GitHub Actions 定时运行。  
 支持 **多账号顺序执行**（一个跑完再跑下一个）。
@@ -8,7 +8,7 @@
 - 多账号顺序续期（`DNSHE_ACCOUNTS` JSON）
 - 兼容旧版单账号 Secrets
 - 自动检测到期时间，按阈值续期（默认剩余 &lt; 180 天）
-- ServerChan (sct.ftqq.com) 微信汇总通知
+- **Telegram Bot** 汇总通知（只推本仓库任务，不吵别的项目）
 - GitHub Actions 定时 / 手动触发
 
 ## Secrets 配置
@@ -48,11 +48,25 @@
 
 若同时配置了 `DNSHE_ACCOUNTS`，**只使用多账号 JSON**，忽略单账号两项。
 
-### 通知
+### 通知（Telegram）
 
 | Secret | 说明 |
 |--------|------|
-| `SCT_KEY` | ServerChan SendKey（https://sct.ftqq.com/ ） |
+| `TELEGRAM_BOT_TOKEN` | 找 [@BotFather](https://t.me/BotFather) 创建机器人拿到的 Token |
+| `TELEGRAM_CHAT_ID` | 你的用户/群 ID（见下方获取方法） |
+
+#### 怎么拿 Token / Chat ID
+
+1. Telegram 打开 [@BotFather](https://t.me/BotFather) → `/newbot` → 按提示创建 → 复制 **Token**  
+2. 先给你自己的机器人随便发一条消息（例如 `hi`）  
+3. 浏览器打开（把 `TOKEN` 换成你的）：  
+   `https://api.telegram.org/botTOKEN/getUpdates`  
+4. 在返回 JSON 里找 `"chat":{"id": 数字}` → 这个数字就是 **Chat ID**  
+   - 私聊一般是正数，例如 `123456789`  
+   - 群一般是负数，例如 `-1001234567890`  
+5. 把 Token、Chat ID 分别填进仓库 Secrets  
+
+旧的 `SCT_KEY` 可删，已不再使用。
 
 ### 续期阈值
 
@@ -68,14 +82,15 @@ RENEW_THRESHOLD_DAYS = 180  # 剩余天数小于该值才续期
 
 1. 按账号顺序：列表 → 判断 → 续期  
 2. 某账号失败会记入报告，**继续下一个账号**  
-3. 全部跑完后 **一条** Server酱汇总（含所有账号）  
+3. 全部跑完后 **一条** Telegram 汇总（超长自动拆多条）  
 4. 任一账号有续期/列表失败时，Workflow 以 exit code 1 结束（方便 Actions 标红），但前面账号已执行完  
 
 ## 本地试跑
 
 ```bash
 export DNSHE_ACCOUNTS='[{"name":"测试","api_key":"...","api_secret":"..."}]'
-export SCT_KEY='你的SendKey'   # 可选
+export TELEGRAM_BOT_TOKEN='123456:ABC-DEF...'
+export TELEGRAM_CHAT_ID='123456789'
 pip install requests
 python renew_domains.py
 ```

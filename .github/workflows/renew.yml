@@ -29,6 +29,7 @@ jobs:
           DNSHE_API_KEY: ${{ secrets.DNSHE_API_KEY }}
           DNSHE_API_SECRET: ${{ secrets.DNSHE_API_SECRET }}
           DNSHE_ACCOUNT_NAME: ${{ secrets.DNSHE_ACCOUNT_NAME }}
-          # 通知
-          SCT_KEY: ${{ secrets.SCT_KEY }}
+          # 通知（Telegram Bot）
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: python renew_domains.py
