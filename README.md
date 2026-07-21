@@ -58,15 +58,9 @@
 #### 怎么拿 Token / Chat ID
 
 1. Telegram 打开 [@BotFather](https://t.me/BotFather) → `/newbot` → 按提示创建 → 复制 **Token**  
-2. 先给你自己的机器人随便发一条消息（例如 `hi`）  
-3. 浏览器打开（把 `TOKEN` 换成你的）：  
-   `https://api.telegram.org/botTOKEN/getUpdates`  
-4. 在返回 JSON 里找 `"chat":{"id": 数字}` → 这个数字就是 **Chat ID**  
-   - 私聊一般是正数，例如 `123456789`  
-   - 群一般是负数，例如 `-1001234567890`  
-5. 把 Token、Chat ID 分别填进仓库 Secrets  
-
-旧的 `SCT_KEY` 可删，已不再使用。
+2. Chat ID：打开 [@userinfobot](https://t.me/userinfobot) → 点 Start / 发任意消息 → 它会回你的 **Id**（一串数字）  
+3. 先给你自己的机器人发一句 `hi`（否则机器人还不能主动给你发消息）  
+4. 把 Token、Chat ID 分别填进仓库 Secrets  
 
 ### 续期阈值
 
