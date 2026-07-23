@@ -1,6 +1,10 @@
 import json
 import os
+import smtplib
+import ssl
 from datetime import datetime
+from email.header import Header
+from email.mime.text import MIMEText
 
 import requests
 
@@ -10,12 +14,109 @@ BASE_URL = "https://api005.dnshe.com/index.php?m=domain_hub"
 RENEW_THRESHOLD_DAYS = 180
 
 
-def send_notification(content, title="DNSHE 域名自动续期报告"):
-    """使用 Telegram Bot 发送通知"""
+def load_smtp_config():
+    """
+    读取 Secret SMTP_CONFIG（单个 JSON 对象），例如：
+
+    {
+      "host": "smtp.qq.com",
+      "port": 465,
+      "user": "you@qq.com",
+      "pass": "授权码",
+      "from": "you@qq.com",
+      "to": "recv@example.com",
+      "ssl": true
+    }
+
+    字段：host/user/pass/to 必填；port 默认 465；from 默认 = user；
+    ssl 默认 true（465 SSL）；587 请设 "ssl": false（走 STARTTLS）。
+    pass 也可用 password。
+    to 多人用逗号分隔：a@x.com,b@y.com
+    """
+    raw = (os.environ.get("SMTP_CONFIG") or "").strip()
+    if not raw:
+        return None
+    try:
+        cfg = json.loads(raw)
+    except json.JSONDecodeError as e:
+        print(f"SMTP_CONFIG 不是合法 JSON: {e}")
+        return None
+    if not isinstance(cfg, dict):
+        print("SMTP_CONFIG 必须是 JSON 对象")
+        return None
+
+    host = (cfg.get("host") or "").strip()
+    user = (cfg.get("user") or "").strip()
+    password = (cfg.get("pass") or cfg.get("password") or "").strip()
+    mail_to = (cfg.get("to") or "").strip()
+    if not (host and user and password and mail_to):
+        print("SMTP_CONFIG 缺 host/user/pass/to，跳过邮件")
+        return None
+
+    port_raw = cfg.get("port", 465)
+    try:
+        port = int(port_raw)
+    except (TypeError, ValueError):
+        print(f"SMTP_CONFIG.port 非法: {port_raw!r}，用 465")
+        port = 465
+
+    ssl_val = cfg.get("ssl", True)
+    if isinstance(ssl_val, str):
+        use_ssl = ssl_val.strip().lower() in ("1", "true", "yes", "on")
+    else:
+        use_ssl = bool(ssl_val)
+
+    return {
+        "host": host,
+        "port": port,
+        "user": user,
+        "pass": password,
+        "from": (cfg.get("from") or user).strip(),
+        "to": mail_to,
+        "ssl": use_ssl,
+    }
+
+
+def send_smtp(content, title):
+    """SMTP 发信。失败只打日志，不抛。"""
+    cfg = load_smtp_config()
+    if not cfg:
+        return
+
+    body = f"{title}\n\n{content}"
+    recipients = [x.strip() for x in cfg["to"].split(",") if x.strip()]
+    if not recipients:
+        print("SMTP_CONFIG.to 解析后为空，跳过邮件")
+        return
+
+    try:
+        msg = MIMEText(body, "plain", "utf-8")
+        msg["Subject"] = str(Header(title, "utf-8"))
+        msg["From"] = cfg["from"]
+        msg["To"] = ", ".join(recipients)
+
+        host, port = cfg["host"], cfg["port"]
+        if cfg["ssl"] or port == 465:
+            context = ssl.create_default_context()
+            with smtplib.SMTP_SSL(host, port, timeout=30, context=context) as s:
+                s.login(cfg["user"], cfg["pass"])
+                s.sendmail(cfg["from"], recipients, msg.as_string())
+        else:
+            with smtplib.SMTP(host, port, timeout=30) as s:
+                s.ehlo()
+                s.starttls(context=ssl.create_default_context())
+                s.login(cfg["user"], cfg["pass"])
+                s.sendmail(cfg["from"], recipients, msg.as_string())
+        print("SMTP 推送成功 ->", ", ".join(recipients))
+    except Exception as e:
+        print("SMTP 推送失败:", str(e))
+
+
+def send_telegram(content, title):
+    """Telegram Bot 推送。失败只打日志，不抛。"""
     token = (os.environ.get("TELEGRAM_BOT_TOKEN") or "").strip()
     chat_id = (os.environ.get("TELEGRAM_CHAT_ID") or "").strip()
     if not token or not chat_id:
-        print("未配置 TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_ID，跳过推送")
         return
 
     text = f"{title}\n\n{content}"
@@ -48,6 +149,28 @@ def send_notification(content, title="DNSHE 域名自动续期报告"):
                 print("Telegram 推送失败 HTTP", resp.status_code)
         except Exception as e:
             print("推送失败:", str(e))
+
+
+def send_notification(content, title="DNSHE 域名自动续期报告"):
+    """
+    通知通道（可并存，互不影响）：
+    - SMTP：Secret SMTP_CONFIG（JSON）
+    - Telegram：TELEGRAM_BOT_TOKEN + TELEGRAM_CHAT_ID
+    都未配置则只打日志跳过。
+    """
+    has_smtp = bool((os.environ.get("SMTP_CONFIG") or "").strip())
+    has_tg = bool(
+        (os.environ.get("TELEGRAM_BOT_TOKEN") or "").strip()
+        and (os.environ.get("TELEGRAM_CHAT_ID") or "").strip()
+    )
+    if not has_smtp and not has_tg:
+        print("未配置 SMTP_CONFIG 或 TELEGRAM_*，跳过推送")
+        return
+
+    if has_smtp:
+        send_smtp(content, title)
+    if has_tg:
+        send_telegram(content, title)
 
 
 def load_accounts():
@@ -103,7 +226,7 @@ def process_account(account):
     处理单个账号：列域名 → 按阈值续期。
     返回 (detail_log, summary_line, has_error)
     - detail_log: 完整日志（打到控制台 / Actions）
-    - summary_line: 精简汇总（发 Telegram）
+    - summary_line: 精简汇总（发通知）
     """
     name = account["name"]
     headers = {
@@ -222,7 +345,7 @@ def process_account(account):
     lines.append("=== 所有域名到期时间 ===")
     lines.extend(expiry_info)
 
-    # 精简汇总：只给 Telegram；失败时附域名列表
+    # 精简汇总：只给通知；失败时附域名列表
     summary = (
         f"【{name}】共 {total} 个域名"
         f"，无需续期 {skipped}"
