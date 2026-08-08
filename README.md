@@ -3,6 +3,15 @@
 自动续期 DNSHE 免费域名，基于 GitHub Actions 定时运行。  
 支持 **多账号顺序执行**（一个跑完再跑下一个）。
 
+## 参考项目
+
+本仓库基于 [vip7kk/DNSHE-Auto-Renew](https://github.com/vip7kk/DNSHE-Auto-Renew) 改造，主要变更：
+
+- **通知方式**：原 ServerChan（微信）→ **Telegram Bot + SMTP 邮件** 双通道，可并存，未配置则跳过推送
+- **多账户管理**：原单账号 → 支持 `DNSHE_ACCOUNTS` JSON 一次配置多个账号**顺序执行**（一个跑完再跑下一个）
+- **通知形式**：推送内容改为**精简汇总**（每账号一行统计），失败时附失败域名列表；详细逐域名日志只留在 Actions 控制台
+- 保留：自动检测到期时间、按阈值续期（默认剩余 < 180 天）、GitHub Actions 定时 / 手动触发
+
 ## 功能
 
 - 多账号顺序续期（`DNSHE_ACCOUNTS` JSON）
@@ -13,11 +22,18 @@
   - **SMTP 邮件**（单个 Secret `SMTP_CONFIG` JSON）
 - GitHub Actions 定时 / 手动触发
 
-## Secrets 配置
+## 变量配置
 
 路径：仓库 **Settings → Secrets and variables → Actions**
 
-### 方式 A：多账号（推荐）
+所有变量分两组：**账号（必填）** 与 **通知（可选）**。  
+每组内的两种方式**任选其一**；方式之间用 `---` 分隔线区分。
+
+---
+
+### 一、账号配置（必填，两种方式任选其一）
+
+#### 方式 A：多账号 JSON（推荐）
 
 新建 Secret 名：`DNSHE_ACCOUNTS`  
 值为 **JSON 数组**（不要用 Markdown 代码块包起来；可多行缩进）：
@@ -40,35 +56,32 @@
 
 执行顺序 = 数组顺序（先 号1，再 号2…）。
 
-### 方式 B：单账号（兼容旧配置）
+---
 
-| Secret | 说明 |
-|--------|------|
-| `DNSHE_API_KEY` | API Key |
-| `DNSHE_API_SECRET` | API Secret |
-| `DNSHE_ACCOUNT_NAME` | 可选，报告里的账号名，默认 `default` |
+#### 方式 B：单账号（兼容旧配置）
 
-若同时配置了 `DNSHE_ACCOUNTS`，**只使用多账号 JSON**，忽略单账号两项。
+| Secret | 必填 | 说明 |
+|--------|:----:|------|
+| `DNSHE_API_KEY` | ✅ | API Key |
+| `DNSHE_API_SECRET` | ✅ | API Secret |
+| `DNSHE_ACCOUNT_NAME` | | 可选，报告里的账号名，默认 `default` |
 
-### 通知 A：Telegram（可选）
+> 若同时配置了 `DNSHE_ACCOUNTS`，**只使用方式 A（多账号 JSON）**，忽略本方式。
 
-| Secret | 说明 |
-|--------|------|
-| `TELEGRAM_BOT_TOKEN` | 找 [@BotFather](https://t.me/BotFather) 创建机器人拿到的 Token |
-| `TELEGRAM_CHAT_ID` | 你的用户/群 ID（见下方获取方法） |
+---
 
-#### 怎么拿 Token / Chat ID
+### 二、通知配置（可选，两种方式任选其一，也可并存）
 
-1. Telegram 打开 [@BotFather](https://t.me/BotFather) → `/newbot` → 按提示创建 → 复制 **Token**  
-2. Chat ID：打开 [@userinfobot](https://t.me/userinfobot) → 点 Start / 发任意消息 → 它会回你的 **Id**（一串数字）  
-3. 先给你自己的机器人发一句 `hi`（否则机器人还不能主动给你发消息）  
-4. 把 Token、Chat ID 分别填进仓库 Secrets  
+#### 通知 A：Telegram
 
-发到群的话，把机器人拉进群，Chat ID 用群 ID（一般是负数，可用群内相关 bot 查）。  
+| Secret | 必填 | 说明 |
+|--------|:----:|------|
+| `TELEGRAM_BOT_TOKEN` | ✅ | 找 [@BotFather](https://t.me/BotFather) 创建机器人拿到的 Token |
+| `TELEGRAM_CHAT_ID` | ✅ | 你的用户/群 ID（获取方法见「变量来源」） |
 
-旧的 `SCT_KEY` 可删，已不再使用。
+---
 
-### 通知 B：SMTP 邮件（可选，单个 JSON）
+#### 通知 B：SMTP 邮件（单个 JSON）
 
 新建 Secret 名：`SMTP_CONFIG`  
 值为 **一个 JSON 对象**（与 `DNSHE_ACCOUNTS` 一样，只贴纯 JSON）：
@@ -102,8 +115,32 @@
 - 通知失败**不阻断**续期  
 - 常见坑：必须用授权码；465/SSL 与 587/STARTTLS 别混；`from` 最好与认证邮箱一致  
 
-QQ 邮箱：设置里开 SMTP → 生成授权码 → `host=smtp.qq.com` `port=465` `ssl=true`。  
-Gmail：开 2FA → 应用专用密码 → `host=smtp.gmail.com` `port=587` `ssl=false`。
+---
+
+### 三、变量来源
+
+#### DNSHE API Key / Secret
+
+DNSHE 官网登录后，在 **免费域名 → API管理（或对应页面）查看 / 生成你的 `API Key` 与 `API Secret`，填入对应账号方式即可。
+或者直接跳转[DNSHE-API生成界面](https://my.dnshe.com/index.php?m=domain_hub&view=api)自行生成API。
+
+#### Telegram Token
+
+打开 [@BotFather](https://t.me/BotFather) → `/newbot` → 按提示创建 → 复制 **Token**。
+
+#### Telegram Chat ID
+
+1. 打开 [@userinfobot](https://t.me/userinfobot) → 点 Start / 发任意消息 → 它会回你的 **Id**（一串数字）  
+2. 先给你自己的机器人发一句 `hi`（否则机器人还不能主动给你发消息）  
+3. 把 Token、Chat ID 分别填进仓库 Secrets  
+
+发到群的话，把机器人拉进群，Chat ID 用群 ID（一般是负数，可用群内相关 bot 查）。
+
+#### SMTP 授权码
+
+- **QQ 邮箱**：设置里开启 SMTP → 生成授权码 → `host=smtp.qq.com` `port=465` `ssl=true`  
+- **Gmail**：开启 2FA → 应用专用密码（App Password）→ `host=smtp.gmail.com` `port=587` `ssl=false`  
+
 
 ### 续期阈值
 
@@ -149,7 +186,7 @@ python renew_domains.py
 
 ## 定时
 
-默认 UTC 每月 **15** 日 00:00（北京时间约 08:00，避开月初扎堆）。  
-改 `.github/workflows/renew.yml` 里 `cron`，或用 Actions 页 **Run workflow** 手动跑。
+UTC 每日 00:00 ≈ 北京时间 08:00触发运行
+可根据自己需要修改 `.github/workflows/renew.yml` 里 `cron`，或用 Actions 页 **Run workflow** 手动跑。
 
 Fork 使用建议：请自行改成不同的 `cron`，避免与他人同一时间扎堆请求。
